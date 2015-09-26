@@ -1,6 +1,4 @@
 import argparse
-import cv2
-
 from detector import ColorFeretFaceDetector
 
 
@@ -14,11 +12,8 @@ def main():
 
     if args.dataset == 'colorferet':
         detector = ColorFeretFaceDetector(args.train_path, args.test_path)
+        detector.show_images('projected')
 
-        for image in detector.train_images:
-            print image.shape
-            cv2.imshow('lol', image)
-            cv2.waitKey(33)
 
 if __name__ == "__main__":
     main()
