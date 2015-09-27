@@ -7,7 +7,7 @@ import cv2
 import numpy
 
 
-class _PCADetector:
+class _PCADetector(object):
 
     train_M = 0
     train_N = 256
@@ -150,3 +150,4 @@ class ColorFeretFaceDetector(_PCADetector):
                     self.train_images.append(cv2.resize(image_cropped, (self.train_N, self.train_N)))
 
         self.train_M = len(self.train_images)
+
