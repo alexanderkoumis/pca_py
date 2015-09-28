@@ -7,7 +7,17 @@ import cv2
 import numpy
 
 
-class _PCADetector:
+def normalize(x, low, high):
+    min_x = numpy.min(x)
+    max_x = numpy.max(x)
+    x -= float(min_x)
+    x /= float((max_x - min_x))
+    x *= (high - low)
+    x += low
+    return x
+
+
+class _PCADetector(object):
 
     train_M = 0
     train_N = 256
@@ -35,9 +45,7 @@ class _PCADetector:
         self._set_images()
 
         # Step 2: Represent every image I as a flattened vector, Γ
-        train_gamma = numpy.zeros((self.train_NN, self.train_M))
-        for col in range(0, self.train_M - 1):
-            train_gamma[:, col] = self.train_images[col].ravel()
+        train_gamma = self.train_images
 
         # Step 3: Compute the mean face vector, Ψ
         train_psi = numpy.mean(train_gamma, axis=1)
@@ -58,20 +66,48 @@ class _PCADetector:
         # Step 6.2: Compute eigenvectors vi of (A^T)A
         train_w, train_v = numpy.linalg.eig(train_L)
 
+        train_w_largest = train_w.argsort()[::-1][:20]
+
         #   Step 6.3: Compute M best eigenvectors/eigenfaces of A(A^T) : ui = Avi, normalize such that ||ui|| = 1
         train_u = train_A.dot(train_v)
-        train_u /= numpy.linalg.norm(train_u)
+        train_u /= numpy.linalg.norm(train_u, axis=0)
 
-        self.train_projections = numpy.zeros((self.train_M, self.train_NN))
-        for i in range(0, self.train_M - 1):
-            projected_face = train_u.dot(train_A[i].T)
-            self.train_projections[i] = projected_face
+        self.train_projections = numpy.zeros((self.train_NN, self.train_M))
+        for col in range(0, self.train_M - 1):
+            self.train_projections[:, col] = train_u.dot(train_A[col].T)
 
-    def show_images(self, display_type='projected'):
+    def display_image(self, image):
+        cv2.imshow('image', image.astype(numpy.uint8).reshape((self.train_N, self.train_N)))
+        return cv2.waitKey(0)
+
+    def show_images(self, display_type=None):
         display_images = self.train_projections if display_type == 'projected' else self.train_images
         for display_image in display_images:
             cv2.imshow('lol', display_image.reshape(self.train_N, self.train_N))
-            cv2.waitKey(33)
+            cv2.waitKey(0)
+
+    def navigate_images(self, display_type=None):
+        display_images = self.train_projections if display_type == 'projected' else self.train_images
+        img_num = 0
+        key_map = {
+            27: 'exit',
+            63232: 'up',
+            63233: 'down',
+            63234: 'left',
+            63235: 'right',
+        }
+        while True:
+            key = self.display_image(normalize(display_images[:, img_num], 0, 255))
+            if key_map[key] == 'exit':
+                break
+            elif key_map[key] == 'up' or key_map[key] == 'down':
+                display_images = self.train_projections if display_images is self.train_images else self.train_images
+            elif key_map[key] == 'left':
+                img_num = img_num - 1 if img_num > 0 else self.train_M - 1
+            elif key_map[key] == 'right':
+                img_num = (img_num + 1) % self.train_M
+            else:
+                print 'Unmapped key:', key
 
 
 class ColorFeretFaceDetector(_PCADetector):
@@ -84,6 +120,7 @@ class ColorFeretFaceDetector(_PCADetector):
 
     def _set_images(self):
 
+        train_images = []
         image_dir_root = os.path.join(self.train_dir, 'dvd1', 'data', 'images')
         metadata_path = os.path.join(self.train_dir, 'dvd1', 'data', 'ground_truths', 'xml')
 
@@ -147,6 +184,9 @@ class ColorFeretFaceDetector(_PCADetector):
                     tl_x = face_traits['right_eye']['x'] - (w_scaled - w_orig) / 2
                     tl_y = face_traits['right_eye']['y'] - (h_scaled - h_orig) / 2
                     image_cropped = image_orig[tl_y:tl_y+h_scaled, tl_x:tl_x+w_scaled]
-                    self.train_images.append(cv2.resize(image_cropped, (self.train_N, self.train_N)))
+                    train_images.append(cv2.resize(image_cropped, (self.train_N, self.train_N)))
 
-        self.train_M = len(self.train_images)
+        self.train_M = len(train_images)
+        self.train_images = numpy.zeros((self.train_NN, self.train_M))
+        for col in range(0, self.train_M - 1):
+            self.train_images[:, col] = train_images[col].flatten()

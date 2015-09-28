@@ -1,4 +1,5 @@
 import argparse
+# import cv2
 from detector import ColorFeretFaceDetector
 
 
@@ -12,7 +13,22 @@ def main():
 
     if args.dataset == 'colorferet':
         detector = ColorFeretFaceDetector(args.train_path, args.test_path)
-        detector.show_images('projected')
+        # detector.show_images('projected')
+        detector.navigate_images()
+
+    # video_capture = cv2.VideoCapture(0)
+    #
+    # while True:
+    #     ret, frame = video_capture.read()
+    #
+    #     if ret:
+    #         cv2.imshow('webcam', frame)
+    #         key = cv2.waitKey(33)
+    #         if key >= 0:
+    #             break
+    #     else:
+    #         print 'Error reading video'
+    #         break
 
 
 if __name__ == "__main__":
