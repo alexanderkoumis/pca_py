@@ -11,7 +11,7 @@ def normalize(x, low, high):
     min_x = numpy.min(x)
     max_x = numpy.max(x)
     x -= float(min_x)
-    x /= float((max_x - min_x))
+    x /= float(max_x - min_x)
     x *= (high - low)
     x += low
     return x
@@ -19,12 +19,12 @@ def normalize(x, low, high):
 
 class _PCADetector(object):
 
-    train_M = 0
-    train_N = 256
-    train_NN = train_N * train_N
+    K = 200                # Number of eigenvectors to use for reprojection
+    M = 0                  # Total pictures in dataset
+    N = 256                # Edge dimension to resize dataset images to
+    NN = N * N             # Edge dimension squared
     train_images = []
-    train_col_vecs = []
-    train_projections = []
+    train_eigenvectors = []
 
     __metaclass__ = abc.ABCMeta
 
@@ -51,43 +51,47 @@ class _PCADetector(object):
         train_psi = numpy.mean(train_gamma, axis=1)
 
         # Step 4: Subtract the mean face, getting Φ [A = Φ1, Φ2, ..., ΦM]
-        train_A = train_gamma - train_psi.reshape(self.train_NN, 1)
+        train_A = train_gamma - train_psi.reshape(self.NN, 1)
 
         # Step 5: Compute the covariance matrix, C
+        # (skip, read step 6 note)
 
         # Step 6: Compute the Eigenvectors ui of C, A(A^T)
-
-        # Because 5 and 6 result in N2xN2 matrix, we will instead compute eigenvectors of L ((A^T)A), vi, whose
-        # eigenvectors are linearly related to ui by: ui = Avi
+        # (skip - because 5 and 6 result in N2xN2 matrix, instead compute eigenvectors of L ((A^T)A), vi, whose
+        #  Eigenvectors are linearly related to ui by: ui = Avi)
 
         # Step 6.1: Compute L, (A^T)A
         train_L = train_A.T.dot(train_A)
 
         # Step 6.2: Compute eigenvectors vi of (A^T)A
         train_w, train_v = numpy.linalg.eig(train_L)
+        train_w_largest = train_w.argsort()[::-1][:self.K]
 
-        train_w_largest = train_w.argsort()[::-1][:20]
-
-        #   Step 6.3: Compute M best eigenvectors/eigenfaces of A(A^T) : ui = Avi, normalize such that ||ui|| = 1
+        # Step 6.3: Compute M best eigenvectors/eigenfaces of A(A^T) : ui = Avi, normalize such that ||ui|| = 1
         train_u = train_A.dot(train_v)
         train_u /= numpy.linalg.norm(train_u, axis=0)
+        self.train_eigenvectors = train_u
 
-        self.train_projections = numpy.zeros((self.train_NN, self.train_M))
-        for col in range(0, self.train_M - 1):
-            self.train_projections[:, col] = train_u.dot(train_A[col].T)
+        # Uncomment to watch projection of dataset images onto "face space"
+        # self.train_projections = numpy.zeros((self.NN, self.M))
+        # for i in range(0, self.M - 1):
+        #     test_phi = train_A[:, i]
+        #     for j in range(0, self.K - 1):
+        #         u = train_u[:, train_w_largest[j]]
+        #         self.train_projections[:, i] += u.dot(test_phi) * u
+        #         self.display_image(self.train_projections[:, i], False)
 
-    def display_image(self, image):
-        cv2.imshow('image', image.astype(numpy.uint8).reshape((self.train_N, self.train_N)))
-        return cv2.waitKey(0)
+    def display_image(self, image, wait=True):
+        cv2.imshow('pca', normalize(image, 0, 255).astype(numpy.uint8).reshape((self.N, self.N)))
+        return cv2.waitKey(0 if wait else 33)
 
-    def show_images(self, display_type=None):
-        display_images = self.train_projections if display_type == 'projected' else self.train_images
-        for display_image in display_images:
-            cv2.imshow('lol', display_image.reshape(self.train_N, self.train_N))
-            cv2.waitKey(0)
+    def display_images(self, images, wait=False):
+        if images.shape[0] == self.NN:
+            for image in images.T:
+                self.display_image(image, wait)
 
-    def navigate_images(self, display_type=None):
-        display_images = self.train_projections if display_type == 'projected' else self.train_images
+    def navigate_images(self):
+        images = self.train_images
         img_num = 0
         key_map = {
             27: 'exit',
@@ -97,15 +101,15 @@ class _PCADetector(object):
             63235: 'right',
         }
         while True:
-            key = self.display_image(normalize(display_images[:, img_num], 0, 255))
+            key = self.display_image(images[:, img_num])
             if key_map[key] == 'exit':
                 break
             elif key_map[key] == 'up' or key_map[key] == 'down':
-                display_images = self.train_projections if display_images is self.train_images else self.train_images
+                images = self.train_eigenvectors if images is self.train_images else self.train_images
             elif key_map[key] == 'left':
-                img_num = img_num - 1 if img_num > 0 else self.train_M - 1
+                img_num = img_num - 1 if img_num > 0 else self.M - 1
             elif key_map[key] == 'right':
-                img_num = (img_num + 1) % self.train_M
+                img_num = (img_num + 1) % self.M
             else:
                 print 'Unmapped key:', key
 
@@ -184,9 +188,9 @@ class ColorFeretFaceDetector(_PCADetector):
                     tl_x = face_traits['right_eye']['x'] - (w_scaled - w_orig) / 2
                     tl_y = face_traits['right_eye']['y'] - (h_scaled - h_orig) / 2
                     image_cropped = image_orig[tl_y:tl_y+h_scaled, tl_x:tl_x+w_scaled]
-                    train_images.append(cv2.resize(image_cropped, (self.train_N, self.train_N)))
+                    train_images.append(cv2.resize(image_cropped, (self.N, self.N)))
 
-        self.train_M = len(train_images)
-        self.train_images = numpy.zeros((self.train_NN, self.train_M))
-        for col in range(0, self.train_M - 1):
+        self.M = len(train_images)
+        self.train_images = numpy.zeros((self.NN, self.M))
+        for col in range(0, self.M - 1):
             self.train_images[:, col] = train_images[col].flatten()

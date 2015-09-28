@@ -13,7 +13,6 @@ def main():
 
     if args.dataset == 'colorferet':
         detector = ColorFeretFaceDetector(args.train_path, args.test_path)
-        # detector.show_images('projected')
         detector.navigate_images()
 
     # video_capture = cv2.VideoCapture(0)
